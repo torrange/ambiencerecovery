@@ -15,6 +15,8 @@ typedef struct {
     float* gain_s_port;
     float* wet_port;
     float* delay_buffer[2];
+    float scale;
+    float feedback_damp;
     uint32_t buffer_size;
     uint32_t write_index;
     uint32_t delay_time;
@@ -29,6 +31,8 @@ static LV2_Handle instantiate(const LV2_Descriptor* descriptor,
     delay->delay_time = (uint32_t)(sample_rate * 0.030);
     delay->delay_buffer[0] = (float*)calloc(delay->buffer_size, sizeof(float));
     delay->delay_buffer[1] = (float*)calloc(delay->buffer_size, sizeof(float));
+    delay->scale = log( 10.0 ) * 0.05;
+    delay->feedback_damp = exp( -16.95 * delay->scale ) / exp( -2 * delay->scale );
     return (LV2_Handle)delay;
 }
 
@@ -100,9 +104,9 @@ static void run(LV2_Handle instance, uint32_t n_samples) {
 		float dry_l = ch_m + ch_s;
 		float dry_r = ch_m - ch_s;
         float delayed_l = buffer_l[(write_index + delay_time) % buffer_size];
-        float delayed_r = buffer_r[(write_index + delay_time) % buffer_size];
-        buffer_l[write_index] = dry_l;
-        buffer_r[write_index] = dry_r;
+        float delayed_r = buffer_r[(write_index + delay_time) % buffer_size] * -1;
+        buffer_l[write_index] = dry_l * delay->feedback_damp;
+        buffer_r[write_index] = dry_r * delay->feedback_damp;
         out_l[i] = (coef_gain * dry_l) + (coef_wet * delayed_r);
         out_r[i] = (coef_gain * dry_r) + (coef_wet * delayed_l);
         write_index = (write_index + 1) % buffer_size;
